@@ -1,4 +1,3 @@
-# rubocop:disable  Metrics/MethodLength, Metrics/BlockLength, Style/MutableConstant, Style/FrozenStringLiteralComment, Style/PercentLiteralDelimiters, Style/RedundantReturn
 SUIT = %w(H D S C)
 VALUE = %w(2 3 4 5 6 7 8 9 10 J Q K A)
 CARDS_WORTH_10 = %w(10 J Q K)
@@ -6,6 +5,59 @@ CARDS_WORTH_FACE = %w(2 3 4 5 6 7 8 9)
 DEALER_POINT_MIN = 17
 POINT_GOAL_MAX = 21
 GRAND_WINNING_SCORE = 5
+RULES = "Rules:
+- Each player is dealt 2 cards.
+- You can see your 2 cards but only see one of the dealers cards.
+- The goal is to get as close to #{POINT_GOAL_MAX} without going over.
+- If you go over #{POINT_GOAL_MAX} that means you bust.
+- If you bust and the dealer doesn't bust, then the dealer wins the round.
+- If the dealer busts, you win the round!
+- If neither player busts then the player closest to #{POINT_GOAL_MAX}
+  wins the round, with ties favoring the player.
+- The first player to win 5 rounds is the grand winner!"
+
+def prompt(message)
+  puts "=> #{message}"
+end
+
+def display_welcome_rules
+  system 'clear'
+  prompt 'Welcome to Blackjack!'
+  prompt 'Can you beat the dealer?'
+  prompt RULES
+  answer = nil
+  loop do
+    prompt 'Enter "start" to begin:'
+    answer = gets.chomp.downcase
+    break if answer == 'start'
+    prompt 'Invalid input'
+  end
+  system 'clear' if answer == 'start'
+end
+
+def display_card(card)
+  puts '+-------+'
+  puts "|#{card[0]}      |"
+  puts '|       |'
+  if card[1].size > 1
+    puts "|  #{card[1]}   |"
+  else
+    puts "|   #{card[1]}   |"
+  end
+  puts '|       |'
+  puts "|      #{card[0]}|"
+  puts '+-------+'
+end
+
+def display_initial_hands(players_hand, dealers_hand, hand_totals)
+  prompt 'Your cards are:'
+  display_card(players_hand[0])
+  display_card(players_hand[1])
+  prompt "Which add up to #{hand_totals[:player_points]}"
+  puts ""
+  prompt 'The dealer has a mystery card and:'
+  display_card(dealers_hand[0])
+end
 
 def initialize_deck!(deck)
   number_of_cards = 0
@@ -39,13 +91,13 @@ def cards_score(person_hand)
   values = person_hand.map { |card| card[1] }
 
   values.each do |value|
-    if CARDS_WORTH_10.include?(value)
-      person_points += 10
-    elsif CARDS_WORTH_FACE.include?(value)
-      person_points += value.to_i
-    else # its an ace
-      person_points += 11
-    end
+    person_points += if CARDS_WORTH_10.include?(value)
+                       10
+                     elsif CARDS_WORTH_FACE.include?(value)
+                       value.to_i
+                     else
+                       11
+                     end
   end
 
   values.select { |value| value == 'A' }.count.times do
@@ -55,58 +107,93 @@ def cards_score(person_hand)
   person_points
 end
 
-def busted?(person_points)
-  person_points > POINT_GOAL_MAX
+def prompt_hit_or_stay
+  answer = nil
+  loop do
+    prompt 'Hit or stay? (enter "h" or "s")'
+    answer = gets.chomp.downcase
+    break if answer == 'h' || answer == 's'
+    prompt 'Invalid input'
+  end
+  answer
+end
+
+def busted?(hand_totals, player)
+  hand_totals[player] > POINT_GOAL_MAX
 end
 
 def player_hit!(deck, players_hand)
-  system 'clear'
+  prompt 'You hit and got this card:'
   new_card = deck.sample
   remove_card!(deck, new_card)
   players_hand << new_card
   new_points = cards_score(players_hand)
-  puts "You got a #{new_card} and now have #{new_points}"
+  display_card(new_card)
+  prompt "You now have #{new_points}"
   new_points
 end
 
 def dealer_hit!(deck, dealers_hand)
+  prompt 'The dealer hit and got this card:'
   new_card = deck.sample
   remove_card!(deck, new_card)
   dealers_hand << new_card
   new_points = cards_score(dealers_hand)
-  puts "The dealer hit and got a #{new_card} and now has #{new_points}"
+  display_card(new_card)
+  prompt "Dealer now has #{new_points}"
   new_points
 end
 
-def determine_winner(player_points, dealer_points)
-  if busted?(dealer_points)
+def determine_winner(hand_totals)
+  if busted?(hand_totals, :dealer_points)
     'Player'
-  elsif busted?(player_points)
+  elsif busted?(hand_totals, :player_points)
     'Dealer'
-  elsif dealer_points > player_points
+  elsif hand_totals[:dealer_points] > hand_totals[:player_points]
     'Dealer'
   else
     'Player'
   end
 end
 
-def display_scores(player_points, dealer_points)
-  puts "You have #{player_points}"
-  puts "The dealer has #{dealer_points}"
-end
-
 def display_winner(winner)
-  puts "#{winner} won the hand!!"
+  prompt "#{winner} won the hand!!"
 end
 
-def end_of_round_display(player_points, dealer_points)
-  display_scores(player_points, dealer_points)
-  display_winner(determine_winner(player_points, dealer_points))
+def display_scores(hand_totals)
+  prompt "You have #{hand_totals[:player_points]}"
+  prompt "The dealer has #{hand_totals[:dealer_points]}"
+end
+
+def display_hand_totals(hand_totals)
+  display_scores(hand_totals)
+  display_winner(determine_winner(hand_totals))
+end
+
+def display_round_scores(round_scores)
+  prompt "You: #{round_scores[:player_rounds_won]}"
+  prompt "Dealer: #{round_scores[:dealer_rounds_won]}"
+  if detect_grand_winner(round_scores)
+    display_grand_winner(detect_grand_winner(round_scores))
+    reset_round_scores!(round_scores)
+  end
+end
+
+def display_grand_winner(winner)
+  prompt "#{winner} won #{GRAND_WINNING_SCORE} rounds and is the grand winner!!"
+end
+
+def detect_grand_winner(round_scores)
+  if round_scores[:player_rounds_won] == GRAND_WINNING_SCORE
+    'Player'
+  elsif round_scores[:dealer_rounds_won] == GRAND_WINNING_SCORE
+    'Dealer'
+  end
 end
 
 def play_again?
-  puts 'Play again? (y or n)'
-  answer = gets.chomp
+  prompt 'Play again? (y or n)'
+  answer = gets.chomp.downcase
   answer.start_with?('y')
 end
 
@@ -116,100 +203,73 @@ def reset_hands!(players_hand, dealers_hand)
   dealers_hand.pop until dealers_hand.empty?
 end
 
-def detect_grand_winner(player_rounds_won, dealer_rounds_won)
-  if player_rounds_won == GRAND_WINNING_SCORE
-    'Player'
-  elsif dealer_rounds_won == GRAND_WINNING_SCORE
-    'Dealer'
+def reset_round_scores!(round_scores)
+  round_scores[:player_rounds_won] = 0
+  round_scores[:dealer_rounds_won] = 0
+end
+
+def reset_hand_totals!(hand_totals)
+  hand_totals.each do |player, _|
+    hand_totals[player] = 0
   end
-end
-
-def display_grand_winner(winner)
-  puts "#{winner} won #{GRAND_WINNING_SCORE} rounds and is the grand winner!!"
-end
-
-def reset_rounds_won
-  return 0, 0
 end
 
 deck = []
 players_hand = []
 dealers_hand = []
-player_rounds_won = 0
-dealer_rounds_won = 0
+hand_totals = { player_points: 0, dealer_points: 0 }
+round_scores = { player_rounds_won: 0, dealer_rounds_won: 0 }
 
+display_welcome_rules
 loop do
   system 'clear'
   initialize_deck!(deck)
   reset_hands!(players_hand, dealers_hand)
+  reset_hand_totals!(hand_totals)
+
   deal_cards!(players_hand, deck)
   deal_cards!(dealers_hand, deck)
-  player_points = cards_score(players_hand)
-  dealer_points = cards_score(dealers_hand)
+  hand_totals[:player_points] = cards_score(players_hand)
+  hand_totals[:dealer_points] = cards_score(dealers_hand)
 
-  puts "Your cards are: #{players_hand} which add up to #{player_points}"
-  puts "The dealer has #{dealers_hand[0]} and a mystery card"
+  display_initial_hands(players_hand, dealers_hand, hand_totals)
 
-  answer = nil
   loop do
-    puts 'Hit or stay?'
-    answer = gets.chomp
-    break if answer == 'stay' || busted?(player_points)
-
-    player_points = player_hit!(deck, players_hand)
-    break if busted?(player_points)
+    break if prompt_hit_or_stay == 's'
+    hand_totals[:player_points] = player_hit!(deck, players_hand)
+    break if busted?(hand_totals, :player_points)
   end
 
-  system 'clear'
-
-  if busted?(player_points)
-    puts 'You busted!'
-    end_of_round_display(player_points, dealer_points)
-    dealer_rounds_won += 1
-    if detect_grand_winner(player_rounds_won, dealer_rounds_won)
-      display_grand_winner(detect_grand_winner(player_rounds_won, dealer_rounds_won))
-      player_rounds_won, dealer_rounds_won = reset_rounds_won
-    end
-    play_again? ? next : break
+  if busted?(hand_totals, :player_points)
+    prompt 'You busted!'
   else
-    puts 'You chose to stay!'
+    prompt 'You chose to stay!'
   end
 
+  sleep(3)
   system 'clear'
 
   loop do
-    break if dealer_points >= DEALER_POINT_MIN
+    break if hand_totals[:dealer_points] >= DEALER_POINT_MIN
 
-    dealer_points = dealer_hit!(deck, dealers_hand)
+    hand_totals[:dealer_points] = dealer_hit!(deck, dealers_hand)
   end
 
-  if busted?(dealer_points)
-    puts 'The dealer busted!'
-    end_of_round_display(player_points, dealer_points)
-    player_rounds_won += 1
-    if detect_grand_winner(player_rounds_won, dealer_rounds_won)
-      display_grand_winner(detect_grand_winner(player_rounds_won, dealer_rounds_won))
-      player_rounds_won, dealer_rounds_won = reset_rounds_won
-    end
-    play_again? ? next : break
+  if busted?(hand_totals, :dealer_points)
+    prompt 'The dealer busted, so you win the round!'
   else
-    end_of_round_display(player_points, dealer_points)
-
-    if determine_winner(player_points, dealer_points) == 'Player'
-      player_rounds_won += 1
-    elsif determine_winner(player_points, dealer_points) == 'Dealer'
-      dealer_rounds_won += 1
-    end
-
-    if detect_grand_winner(player_rounds_won, dealer_rounds_won)
-      display_grand_winner(detect_grand_winner(player_rounds_won, dealer_rounds_won))
-      player_rounds_won, dealer_rounds_won = reset_rounds_won
-    end
-
-    break unless play_again?
+    display_hand_totals(hand_totals)
   end
+
+  if determine_winner(hand_totals) == 'Player'
+    round_scores[:player_rounds_won] += 1
+  elsif determine_winner(hand_totals) == 'Dealer'
+    round_scores[:dealer_rounds_won] += 1
+  end
+
+  display_round_scores(round_scores)
+  break unless play_again?
 end
 
 system 'clear'
 puts 'Thanks for playing, bye!'
-# rubocop:enable  Metrics/MethodLength, Metrics/BlockLength, Style/MutableConstant, Style/FrozenStringLiteralComment, Style/PercentLiteralDelimiters, Style/RedundantReturn
